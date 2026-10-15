@@ -60,3 +60,27 @@ Windows processes.
 This validates the pinned native hook consumer, not a full installed Reasonix
 session or production failure frequency. Its consequences differ by event:
 `UserPromptSubmit` blocks the submission; `PreToolUse` blocks the tool call.
+
+## Recorded check: 2026-10-15
+
+Windows x64, Node 24.12.0, Go 1.26.3; Clawd fix `fd713a3a`, baseline
+`c52e2df6`, and the pinned official Reasonix source above. Each row ran once
+per event and received exactly one real POST. No model or live user session ran.
+
+| Control | UserPromptSubmit | PreToolUse | Native outcome |
+| --- | ---: | ---: | --- |
+| Fixed, normal HTTP | 1074ms | 1032ms | Pass, exit 0 |
+| Fixed, streaming HTTP | 2030ms | 2029ms | Pass, exit 0 |
+| Fixed, streaming + injected 1800ms startup | 3813ms | 3831ms | Pass, exit 0 |
+| Baseline, same streaming + startup injection | 5502ms | 5501ms | TimedOut + Block |
+
+The baseline's return time includes the upstream 500ms pipe-drain allowance;
+its configured timeout remained 5000ms. This negative control demonstrates the
+native consequence under the injected condition, not natural failure frequency.
+
+The focused Windows regression set passed 233 tests with one POSIX-only skip.
+Its real Windows wrapper checks also covered stdin delayed 1800ms **after Node
+readiness**: both blocking events exited in 3508–3525ms, with HTTP-attempt
+receipts. On macOS, 152 related checks and 15 delivery checks passed (six
+Windows-only delivery checks skipped). The four new direct-Node hanging-HTTP
+regressions failed against the baseline at 3526–4050ms and passed with the fix.
