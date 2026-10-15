@@ -84,3 +84,44 @@ readiness**: both blocking events exited in 3508–3525ms, with HTTP-attempt
 receipts. On macOS, 152 related checks and 15 delivery checks passed (six
 Windows-only delivery checks skipped). The four new direct-Node hanging-HTTP
 regressions failed against the baseline at 3526–4050ms and passed with the fix.
+
+## Collect phase timings after a failed Windows retest
+
+The delivery tests emit a `reasonix-hook-timing` JSON diagnostic before their
+assertions, on both pass and failure. The Windows wrapper budget remains
+**5000ms**; no production hook or installer change is needed to collect it.
+After updating the PR checkout, run this PowerShell block from its root. Each
+event runs in its own test invocation, without the other delivery cases before
+it (this does not guarantee a cold OS or filesystem cache):
+
+```powershell
+foreach ($eventName in 'UserPromptSubmit', 'PreToolUse') {
+  node --test --test-concurrency=1 "--test-name-pattern=real Windows wrapper below 5s for $eventName with 1800ms-late stdin and hanging HTTP" test/reasonix-hook-delivery.test.js
+}
+```
+
+Share the two `reasonix-hook-timing` lines and each test's pass/fail result.
+They contain event labels, Node/platform information and elapsed milliseconds,
+without local paths, raw timestamps, PIDs or payload contents. No Reasonix
+installation or live user session is required.
+
+- `spawnToReadyMs`: parent launch start to the Node preloader's ready receipt.
+  This includes wrapper/Node startup and preloader setup; it is not a separate
+  measurement of PowerShell alone.
+- `readyToRequestMs`: ready receipt to the first attempted HTTP request,
+  including input wait and hook setup.
+- `stdinSentAfterReadyMs` / `stdinSentToRequestMs`: locate the parent's input
+  write within that interval. These are write-attempt timestamps, not proof of
+  child receipt. Immediate-input cases normally have a negative first value.
+- `requestToNodeExitMs`: first HTTP attempt to Node's exit receipt.
+- `readyToNodeExitMs`: the observed Node lifetime after preloader readiness;
+  the production hook starts its own clock slightly later.
+- `nodeExitToCloseMs`: exit receipt to the parent's child `close` event,
+  including receipt writing, remaining Node/wrapper shutdown and pipe closing.
+- `totalMs`: the complete measured duration checked against `budgetMs`.
+
+A missing receipt produces `null` for dependent timings rather than zero. The
+readiness/request/exit receipts are small synchronous test-only file writes and
+are included in measured time; wall-clock changes or heavy scheduling stalls
+can affect the readings. Passing locally does not resolve an overrun reported
+on another machine.

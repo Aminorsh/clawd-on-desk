@@ -14,6 +14,9 @@ function record(entry) {
 // A delayed-stdin test can start its delay after Node has actually launched,
 // excluding the cmd/PowerShell startup that happens before this preloader.
 record({ kind: "ready" });
+// Record before Node exits so the parent can distinguish the hook's lifetime
+// from cmd/PowerShell and pipe teardown. This fixture stays silent on stdout.
+process.once("exit", () => record({ kind: "exit" }));
 
 function hangingRequest(method) {
   record({ kind: "request", method });
